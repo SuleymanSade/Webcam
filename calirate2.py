@@ -1,3 +1,4 @@
+# Disclaimer: this is an AI generated code with minor edits by me, use with caution and verify results. This is meant to be a starting point for your calibration process, not a final solution.
 import cv2
 import numpy as np
 import glob

@@ -7,11 +7,6 @@ import os
 import time
 import robotpy_apriltag as apriltag
 
-# look into cv2's camera calibration for better parameters
-# This changes from camera to camera
-# Camera parameters (fx, fy, cx, cy)
-CAM_PARAMETERS = (1048.508930, 1046.948683, 594.227767, 366.160094) # TODO: placeholder values, change these with real calibration
-
 # global shutter
 # >90 deg
 # fixed focus
@@ -52,6 +47,9 @@ class WebCam():
 
         h = settings[id]['height']
         w = settings[id]['width']
+
+        self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, settings[id]['width'])
+        self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, settings[id]['height'])
 
         self.new_camera_mtx, roi = cv2.getOptimalNewCameraMatrix(
             self.camera_matrix, self.dist_coeffs, (w, h), 1, (w, h)
@@ -95,6 +93,7 @@ class WebCam():
 
     def detect(self) -> np.ndarray:
         ret, frame = self.cam.read()
+        
         if not ret:
             print("Failed to grab frame")
             return np.nan
@@ -107,8 +106,6 @@ class WebCam():
         # Needs gray for detections
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         
-        # cv2.imshow("Camera Frame", frame)
-
         # Detect AprilTags
         detections = self.detector.detect(gray)
         
@@ -151,7 +148,7 @@ class WebCam():
         # return np.nan
 
 # try:
-cam = WebCam("comp")
+cam = WebCam("test")
 # except:
 #     print("cannot access 1")
     
