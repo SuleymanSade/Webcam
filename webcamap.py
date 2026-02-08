@@ -27,22 +27,18 @@ class WebCam():
         self.detector.addFamily("tag36h11")
         
         
-        self.dist_coeffs = np.zeros((5, 1))
 
         # look into cv2's camera calibration for better parameters
         # This changes from camera to camera
         # Camera parameters (fx, fy, cx, cy)
         with open("webcam.json", 'r', encoding="utf-8") as file:
             settings = json.load(file)
-            cam_params = (settings[id]['fx'], settings[id]['fy'], settings[id]['cx'], settings[id]['cy']) # TODO: placeholder values, change these with real calibration
+        
+        cam_params = (settings[id]['fx'], settings[id]['fy'], settings[id]['cx'], settings[id]['cy']) # TODO: placeholder values, change these with real calibration
+        self.dist_coeffs = np.array(settings[id]['dist'], dtype=np.float64).reshape((5, 1))
+        self.camera_matrix = np.array(settings[id]["cam_matrix"], dtype=np.float64)
         self.tag_size_meters = 0.1651 #in meters
         self.id = id
-        
-        self.camera_matrix = np.array([
-            [cam_params[0], 0, cam_params[2]],
-            [0, cam_params[1], cam_params[3]],
-            [0, 0, 1]
-        ], dtype=np.float64)
         
         self.pose_est = apriltag.AprilTagPoseEstimator(
             apriltag.AprilTagPoseEstimator.Config(
@@ -52,6 +48,16 @@ class WebCam():
                 cx=cam_params[2],
                 cy=cam_params[3],
             )
+        )
+
+        h = settings[id]['height']
+        w = settings[id]['width']
+
+        self.new_camera_mtx, roi = cv2.getOptimalNewCameraMatrix(
+            self.camera_matrix, self.dist_coeffs, (w, h), 1, (w, h)
+        )
+        self.mapx, self.mapy = cv2.initUndistortRectifyMap(
+            self.camera_matrix, self.dist_coeffs, None, self.new_camera_mtx, (w, h), 5
         )
         
         # NetworkTables setup
@@ -92,6 +98,11 @@ class WebCam():
         if not ret:
             print("Failed to grab frame")
             return np.nan
+        # height, width = frame.shape[:2] # .shape returns (rows, cols, channels)
+        # print(f"Frame dimensions: {width}x{height}")
+        
+        # We remap the frame here to remove distortion, this ensures moer accurate detections and pos est.
+        frame = cv2.remap(frame, self.mapx, self.mapy, cv2.INTER_LINEAR)
 
         # Needs gray for detections
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -105,15 +116,25 @@ class WebCam():
             pose = self.pose_est.estimate(det)
             
             t = pose.translation()
-            x, y, z = t.x, t.y, t.z *2/3
+            x, y, z = t.x, t.y, t.z
             
             R = pose.rotation().toMatrix()
             
             print("x: ", x, "y:", y, "z:", z)
             
-            # corners = det.getCorners()
-            # for i in range(4):
-            #     cv2.line(frame, tuple(corners[i]), tuple(corners[(i+1)%4]), (0,255,0), 2)
+            for i in range(4):
+                p1_raw = det.getCorner(i)
+                p2_raw = det.getCorner((i + 1) % 4)
+
+                # Convert to integer tuples for OpenCV drawing
+                p1 = (int(p1_raw.x), int(p1_raw.y))
+                p2 = (int(p2_raw.x), int(p2_raw.y))
+                
+                cv2.line(frame, p1, p2, (0, 255, 0), 2)
+        cv2.imshow("Camera Frame", frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            # This allows you to press 'q' to stop the loop if needed
+            return np.nan
                 
         # axis:
         # z, positive z is away from camera
@@ -130,7 +151,7 @@ class WebCam():
         # return np.nan
 
 # try:
-cam = WebCam("test")
+cam = WebCam("comp")
 # except:
 #     print("cannot access 1")
     
