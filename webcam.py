@@ -16,22 +16,47 @@ except ImportError:
     # but for unkown reasons, ntcore doesn't work on the computer, so we have to use pynetworktables there
     import ntcore
     using_ntcore = True
+
+
+
+
+FRONT_PORT_ID = "3-2:1.0"
+BACK_PORT_ID  = "1-1.2"
+
+
+def get_camera_map():
+    mapping = {}
+    v4l_dir = "/sys/class/video4linux"
     
+    if not os.path.exists(v4l_dir):
+        return mapping
+
+    for dev_node in os.listdir(v4l_dir):
+        real_path = os.path.realpath(os.path.join(v4l_dir, dev_node))
+        
+        if "video4linux" in real_path:
+            if FRONT_PORT_ID in real_path:
+                mapping["FRONT"] = int(dev_node.replace("video", ""))
+            elif BACK_PORT_ID in real_path:
+                mapping["BACK"] = int(dev_node.replace("video", ""))
+                
+    return mapping
+
 
 # global shutter
 # >90 deg
 # fixed focus
 class WebCam():
-    def __init__(self, id: str = "0"):
+    def __init__(self, id: str, device_index: int):
         with open("webcam.json", 'r', encoding="utf-8") as file:
             settings = json.load(file)
-            self.cam = cv2.VideoCapture(settings[id]["stream"])
+            # self.cam = cv2.VideoCapture(settings[id]["stream"])
+            self.cam = cv2.VideoCapture(device_index)
         if(not self.cam.isOpened()):
             print("Camera not found or cannot be opened.")
             
         self.detector = apriltag.AprilTagDetector()
         self.detector.addFamily("tag36h11")
-        
         
         self.frame_count = 0
         self.start_time = time.time()
@@ -48,27 +73,56 @@ class WebCam():
         self.tag_size_meters = 0.1651 #in meters
         self.id = id
         
-        self.pose_est = apriltag.AprilTagPoseEstimator(
-            apriltag.AprilTagPoseEstimator.Config(
-                tagSize=self.tag_size_meters,
-                fx=cam_params[0],
-                fy=cam_params[1],
-                cx=cam_params[2],
-                cy=cam_params[3],
-            )
-        )
+        # We do not use these cam_params, since the distortion will change these params
+        # self.pose_est = apriltag.AprilTagPoseEstimator(
+        #     apriltag.AprilTagPoseEstimator.Config(
+        #         tagSize=self.tag_size_meters,
+        #         fx=cam_params[0],
+        #         fy=cam_params[1],
+        #         cx=cam_params[2],
+        #         cy=cam_params[3],
+        #     )
+        # )
 
         h = settings[id]['height']
         w = settings[id]['width']
 
-        self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, settings[id]['width'])
-        self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, settings[id]['height'])
+        self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, w)
+        self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+
+        actual_w = self.cam.get(cv2.CAP_PROP_FRAME_WIDTH)
+        actual_h = self.cam.get(cv2.CAP_PROP_FRAME_HEIGHT)
+
+        scale_x = actual_w / w
+        scale_y = actual_h / h
+
+        print(f"[{id}] Resolution: Requested {w}x{h}, Got {actual_w}x{actual_h}")
+        if scale_x != 1.0 or scale_y != 1.0:
+            print(f"[{id}] Warning: Resolution mismatch. Scaling calibration by x:{scale_x:.2f}, y:{scale_y:.2f}")
+
+        self.camera_matrix[0, 0] *= scale_x  # fx
+        self.camera_matrix[1, 1] *= scale_y  # fy
+        self.camera_matrix[0, 2] *= scale_x  # cx
+        self.camera_matrix[1, 2] *= scale_y  # cy
+
+        print(f"Camera {id} requested {w}x{h}, got {actual_w}x{actual_h}")
 
         self.new_camera_mtx, roi = cv2.getOptimalNewCameraMatrix(
             self.camera_matrix, self.dist_coeffs, (w, h), 1, (w, h)
         )
         self.mapx, self.mapy = cv2.initUndistortRectifyMap(
             self.camera_matrix, self.dist_coeffs, None, self.new_camera_mtx, (w, h), 5
+        )
+
+        # configures the estimator with the new values from undistortion
+        self.pose_est = apriltag.AprilTagPoseEstimator(
+            apriltag.AprilTagPoseEstimator.Config(
+                self.tag_size_meters,
+                self.new_camera_mtx[0,0],
+                self.new_camera_mtx[1,1],
+                self.new_camera_mtx[0,2],
+                self.new_camera_mtx[1,2]
+            )
         )
         
         # NetworkTables setup
@@ -112,10 +166,11 @@ class WebCam():
         self.table.putNumberArray("y", y_list)
         self.table.putNumberArray("z", z_list)
 
+        
+
     def detect(self) -> np.ndarray:
         ret, frame = self.cam.read()
 
-        
         if not ret:
             print("Failed to grab frame")
             return np.nan
@@ -124,6 +179,8 @@ class WebCam():
         
         # We remap the frame here to remove distortion, this ensures moer accurate detections and pos est.
         frame = cv2.remap(frame, self.mapx, self.mapy, cv2.INTER_LINEAR)
+
+        print(frame.shape())
 
         # Needs gray for detections
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -137,7 +194,8 @@ class WebCam():
             t = pose.translation()
             x, y, z = t.x, t.y, t.z
             
-            R = pose.rotation().toMatrix()
+            # TODO: gives error in pi, don't know why
+            # R = pose.rotation().toMatrix()
             
             print("x: ", x, "y:", y, "z:", z)
             
@@ -176,7 +234,7 @@ class WebCam():
         # return np.nan
 
 # try:
-cam = WebCam("comp")
+cam = WebCam("test")
 # except:
 #     print("cannot access 1")
     
