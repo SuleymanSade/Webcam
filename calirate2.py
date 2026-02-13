@@ -12,13 +12,13 @@ criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 
 # Prepare object points (0,0,0), (24.5,0,0), ...
 objp = np.zeros((CHECKERBOARD[0] * CHECKERBOARD[1], 3), np.float32)
-objp[:, :2] = np.mgrid[0:CHECKERBOARD[0], 0:CHECKERBOARD[1]].T.reshape(-1, 2)
+objp[:, :2] = np.mgrid[0 : CHECKERBOARD[0], 0 : CHECKERBOARD[1]].T.reshape(-1, 2)
 objp *= SQUARE_SIZE
 
-objpoints = [] # 3d point in real world space
-imgpoints = [] # 2d points in image plane
+objpoints = []  # 3d point in real world space
+imgpoints = []  # 2d points in image plane
 
-images = glob.glob('calibration_images/*.jpg')
+images = glob.glob("calibration_images/*.jpg")
 
 for fname in images:
     img = cv2.imread(fname)
@@ -33,7 +33,9 @@ for fname in images:
         imgpoints.append(corners2)
 
 # Perform Calibration
-ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
+ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(
+    objpoints, imgpoints, gray.shape[::-1], None, None
+)
 
 print("\n--- Camera Matrix (K) ---")
 print(mtx)
