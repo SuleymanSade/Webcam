@@ -19,12 +19,11 @@ except ImportError:
 
     using_ntcore = True
 
-
 FRONT_PORT_ID = "3-2:1.0"
 BACK_PORT_ID = "1-1.2"
 
 
-def get_camera_map():
+def get_camera_index(port_id):
     mapping = {}
     v4l_dir = "/sys/class/video4linux"
 
@@ -35,25 +34,28 @@ def get_camera_map():
         real_path = os.path.realpath(os.path.join(v4l_dir, dev_node))
 
         if "video4linux" in real_path:
-            if FRONT_PORT_ID in real_path:
-                mapping["FRONT"] = int(dev_node.replace("video", ""))
-            elif BACK_PORT_ID in real_path:
-                mapping["BACK"] = int(dev_node.replace("video", ""))
+            # We do divisible by 2, because generally video with odd numbers represent
+            # meta data and the even numbers are actually the stream itself
+            if port_id in real_path and int(dev_node.replace("video", "")) % 2==0:
+                return int(dev_node.replace("video", ""))
 
-    return mapping
+    raise KeyError(f"cannot find the port_id {port_id}, this might mean your stream values in webcam.json is wrong.")
 
 
 # global shutter
 # >90 deg
 # fixed focus
 class WebCam:
-    def __init__(self, id: str, device_index: int):
+    def __init__(self, id: str):
         with open("webcam.json", "r", encoding="utf-8") as file:
             settings = json.load(file)
-            # self.cam = cv2.VideoCapture(settings[id]["stream"])
-            self.cam = cv2.VideoCapture(device_index)
+
+        self.cam = cv2.VideoCapture(
+            get_camera_index(settings[id]["stream"])
+            )
+        
         if not self.cam.isOpened():
-            print("Camera not found or cannot be opened.")
+            print(f"Camera not found or cannot be opened for id (id).")
 
         self.detector = apriltag.AprilTagDetector()
         self.detector.addFamily("tag36h11")
@@ -67,12 +69,6 @@ class WebCam:
         with open("webcam.json", "r", encoding="utf-8") as file:
             settings = json.load(file)
 
-        cam_params = (
-            settings[id]["fx"],
-            settings[id]["fy"],
-            settings[id]["cx"],
-            settings[id]["cy"],
-        )  # TODO: placeholder values, change these with real calibration
         self.dist_coeffs = np.array(settings[id]["dist"], dtype=np.float64).reshape(
             (5, 1)
         )
@@ -80,28 +76,17 @@ class WebCam:
         self.tag_size_meters = 0.1651  # in meters
         self.id = id
 
-        # We do not use these cam_params, since the distortion will change these params
-        # self.pose_est = apriltag.AprilTagPoseEstimator(
-        #     apriltag.AprilTagPoseEstimator.Config(
-        #         tagSize=self.tag_size_meters,
-        #         fx=cam_params[0],
-        #         fy=cam_params[1],
-        #         cx=cam_params[2],
-        #         cy=cam_params[3],
-        #     )
-        # )
-
         h = settings[id]["height"]
         w = settings[id]["width"]
 
-        self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, w)
         self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+        self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, w)
 
-        actual_w = self.cam.get(cv2.CAP_PROP_FRAME_WIDTH)
         actual_h = self.cam.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        actual_w = self.cam.get(cv2.CAP_PROP_FRAME_WIDTH)
 
-        scale_x = actual_w / w
         scale_y = actual_h / h
+        scale_x = actual_w / w
 
         print(f"[{id}] Resolution: Requested {w}x{h}, Got {actual_w}x{actual_h}")
         if scale_x != 1.0 or scale_y != 1.0:
@@ -158,12 +143,13 @@ class WebCam:
         try:
             for det in detections:
                 tag_id, pos = det
-                pos = pos.flatten()  # turns to 1D numpy array
+                t = pos.translation()
+                # pos = pos.flatten()  # turns to 1D numpy array
                 tag_ids.append(tag_id)
                 # pos.flatten() has [x, y, z]
-                x_list.append(pos[0])
-                y_list.append(pos[1])
-                z_list.append(pos[2])
+                x_list.append(t.x)
+                y_list.append(t.y)
+                z_list.append(t.z)
         except:
             pass
             # return
@@ -183,20 +169,25 @@ class WebCam:
         # We remap the frame here to remove distortion, this ensures moer accurate detections and pos est.
         frame = cv2.remap(frame, self.mapx, self.mapy, cv2.INTER_LINEAR)
 
-        print(frame.shape())
+        print(frame.shape)
 
         # Needs gray for detections
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         # Detect AprilTags
         detections = self.detector.detect(gray)
+        
+        poses = []
 
         for det in detections:
+            
             pose = self.pose_est.estimate(det)
+            
+            poses.append((det.getId(), pose))
 
             t = pose.translation()
             x, y, z = t.x, t.y, t.z
-
+            
             # TODO: gives error in pi, don't know why
             # R = pose.rotation().toMatrix()
 
@@ -219,7 +210,7 @@ class WebCam:
             # This allows you to press 'q' to stop the loop if needed
             return np.nan
 
-        print(f"FPS: {self.frame_count / (time.time() - self.start_time):.2f}")
+        # print(f"FPS: {self.frame_count / (time.time() - self.start_time):.2f}")
 
         # axis:
         # z, positive z is away from camera
@@ -236,31 +227,7 @@ class WebCam:
         # return np.nan
 
 
-# try:
 cam = WebCam("test")
-# except:
-#     print("cannot access 1")
-
-# try:
-#     cam2 = WebCam("0")
-# except:
-#     print("cannot access 2")
-start = time.time()
 
 while True:
-    # try:
     cam.detect()
-    # except:
-    #     print("cannot access cam id", cam.id)
-
-    # try:
-    #     cam2.push_network_table(cam2.detect())
-    # except:
-    #     print("cannot access cam id", cam2.id)
-
-    # fps = 1 / (time.time() - start)
-    # start = time.time()
-    # print("fps:", fps)
-
-cam.cam.release()
-cv2.destroyAllWindows()
