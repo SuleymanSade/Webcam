@@ -24,11 +24,7 @@ BACK_PORT_ID = "1-1.2"
 
 
 def get_camera_index(port_id):
-    mapping = {}
     v4l_dir = "/sys/class/video4linux"
-
-    if not os.path.exists(v4l_dir):
-        return mapping
 
     for dev_node in os.listdir(v4l_dir):
         real_path = os.path.realpath(os.path.join(v4l_dir, dev_node))
@@ -36,15 +32,12 @@ def get_camera_index(port_id):
         if "video4linux" in real_path:
             # We do divisible by 2, because generally video with odd numbers represent
             # meta data and the even numbers are actually the stream itself
-            if port_id in real_path and int(dev_node.replace("video", "")) % 2==0:
-                return int(dev_node.replace("video", ""))
+            if port_id in real_path: # and int(dev_node.replace("video", "")) % 2==0:
+                return int(dev_node.replace("video", ""))/2
 
     raise KeyError(f"cannot find the port_id {port_id}, this might mean your stream values in webcam.json is wrong.")
 
 
-# global shutter
-# >90 deg
-# fixed focus
 class WebCam:
     def __init__(self, id: str):
         with open("webcam.json", "r", encoding="utf-8") as file:
@@ -142,11 +135,10 @@ class WebCam:
 
         try:
             for det in detections:
-                tag_id, pos = det
-                t = pos.translation()
-                # pos = pos.flatten()  # turns to 1D numpy array
-                tag_ids.append(tag_id)
-                # pos.flatten() has [x, y, z]
+                id, pose = det
+                t = pose.translation()
+
+                tag_ids.append(id)
                 x_list.append(t.x)
                 y_list.append(t.y)
                 z_list.append(t.z)
@@ -210,6 +202,8 @@ class WebCam:
             # This allows you to press 'q' to stop the loop if needed
             return np.nan
 
+        return poses
+
         # print(f"FPS: {self.frame_count / (time.time() - self.start_time):.2f}")
 
         # axis:
@@ -227,7 +221,8 @@ class WebCam:
         # return np.nan
 
 
-cam = WebCam("test")
+cam = WebCam("cyber")
 
 while True:
     cam.detect()
+    cam.push_network_table(cam.detect())
