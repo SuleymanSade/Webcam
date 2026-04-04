@@ -35,7 +35,7 @@ def get_camera_index(port_id):
             # We do divisible by 2, because generally video with odd numbers represent
             # meta data and the even numbers are actually the stream itself
             if port_id in real_path: # and int(dev_node.replace("video", "")) % 2==0:
-                return math.floor(int(dev_node.replace("video", ""))/2)
+                return int(dev_node.replace("video", ""))-1
 
     raise KeyError(f"cannot find the port_id {port_id}, this might mean your stream values in webcam.json is wrong.")
 
@@ -167,7 +167,7 @@ class WebCam:
             return np.nan
 
         # We remap the frame here to remove distortion, this ensures moer accurate detections and pos est.
-        frame = cv2.remap(frame, self.mapx, self.mapy, cv2.INTER_LINEAR)
+        # frame = cv2.remap(frame, self.mapx, self.mapy, cv2.INTER_LINEAR)
 
         # Needs gray for detections
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
