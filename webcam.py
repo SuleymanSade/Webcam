@@ -58,7 +58,7 @@ class WebCam:
         self.detector.addFamily("tag36h11")
 
         self.frame_count = 0
-        self.start_time = time.time()
+        self.start_time = 0
 
         # look into cv2's camera calibration for better parameters
         # This changes from camera to camera
@@ -158,6 +158,8 @@ class WebCam:
         self.table.putNumberArray("z", z_list)
 
     def detect(self) -> np.ndarray:
+        if not self.start_time:
+            self.start_time = time.time()
         ret, frame = self.cam.read()
 
         if not ret:
@@ -166,8 +168,6 @@ class WebCam:
 
         # We remap the frame here to remove distortion, this ensures moer accurate detections and pos est.
         frame = cv2.remap(frame, self.mapx, self.mapy, cv2.INTER_LINEAR)
-
-        print(frame.shape)
 
         # Needs gray for detections
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -229,7 +229,12 @@ class WebCam:
 
 
 cam = WebCam("fl")
+cam2 = WebCam("fr")
 
 while True:
     cam.detect()
     cam.push_network_table(cam.detect())
+    cam2.detect()
+    cam2.push_network_table(cam2.detect())
+    # cam.detect()
+    # cam.push_network_table(cam.detect())
