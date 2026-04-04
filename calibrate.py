@@ -5,7 +5,7 @@ import threading
 import json
 
 # Configuration
-CHECKERBOARD = (10, 7)  # Internal corners
+CHECKERBOARD = (8, 6)  # Internal corners
 IMAGE_DIR = "calibration_images"
 if not os.path.exists(IMAGE_DIR):
     os.makedirs(IMAGE_DIR)

@@ -46,7 +46,7 @@ class WebCam:
             settings = json.load(file)
 
         self.cam = cv2.VideoCapture(
-            "/dev/video" + get_camera_index(settings[id]["stream"]),
+            "/dev/video" + str(get_camera_index(settings[id]["stream"])),
             cv2.CAP_V4L2
             )
         # self.cam = cv2.VideoCapture(1)
@@ -98,12 +98,14 @@ class WebCam:
 
         print(f"Camera {id} requested {w}x{h}, got {actual_w}x{actual_h}")
 
-        self.new_camera_mtx, roi = cv2.getOptimalNewCameraMatrix(
-            self.camera_matrix, self.dist_coeffs, (w, h), 1, (w, h)
-        )
-        self.mapx, self.mapy = cv2.initUndistortRectifyMap(
-            self.camera_matrix, self.dist_coeffs, None, self.new_camera_mtx, (w, h), 5
-        )
+        # self.new_camera_mtx, roi = cv2.getOptimalNewCameraMatrix(
+        #     self.camera_matrix, self.dist_coeffs, (w, h), 1, (w, h)
+        # )
+        # self.mapx, self.mapy = cv2.initUndistortRectifyMap(
+        #     self.camera_matrix, self.dist_coeffs, None, self.new_camera_mtx, (w, h), 5
+        # )
+
+        self.new_camera_mtx = self.camera_matrix
 
         # configures the estimator with the new values from undistortion
         self.pose_est = apriltag.AprilTagPoseEstimator(
@@ -206,9 +208,10 @@ class WebCam:
             # This allows you to press 'q' to stop the loop if needed
             return np.nan
 
+        print(f"FPS: {self.frame_count / (time.time() - self.start_time):.2f}")
+
         return poses
 
-        # print(f"FPS: {self.frame_count / (time.time() - self.start_time):.2f}")
 
         # axis:
         # z, positive z is away from camera
@@ -225,7 +228,7 @@ class WebCam:
         # return np.nan
 
 
-cam = WebCam("cyber")
+cam = WebCam("fl")
 
 while True:
     cam.detect()

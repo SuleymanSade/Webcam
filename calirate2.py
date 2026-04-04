@@ -4,8 +4,8 @@ import numpy as np
 import glob
 
 # Dimensions
-CHECKERBOARD = (10, 7)
-SQUARE_SIZE = 24.5  # in mm
+CHECKERBOARD = (8, 6)
+SQUARE_SIZE = 26.9875  # in mm
 
 # Criteria for subpixel corner refinement
 criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
