@@ -5,6 +5,7 @@ import json
 import os
 import time
 import robotpy_apriltag as apriltag
+import math
 
 try:
     # works on the computer
@@ -21,6 +22,7 @@ except ImportError:
 
 FRONT_PORT_ID = "3-2:1.0"
 BACK_PORT_ID = "1-1.2"
+IS_UNDISTORT = False
 
 
 def get_camera_index(port_id):
@@ -33,7 +35,7 @@ def get_camera_index(port_id):
             # We do divisible by 2, because generally video with odd numbers represent
             # meta data and the even numbers are actually the stream itself
             if port_id in real_path: # and int(dev_node.replace("video", "")) % 2==0:
-                return int(dev_node.replace("video", ""))/2
+                return math.floor(int(dev_node.replace("video", ""))/2)
 
     raise KeyError(f"cannot find the port_id {port_id}, this might mean your stream values in webcam.json is wrong.")
 
@@ -44,9 +46,11 @@ class WebCam:
             settings = json.load(file)
 
         self.cam = cv2.VideoCapture(
-            get_camera_index(settings[id]["stream"])
+            "/dev/video" + get_camera_index(settings[id]["stream"]),
+            cv2.CAP_V4L2
             )
-        
+        # self.cam = cv2.VideoCapture(1)
+
         if not self.cam.isOpened():
             print(f"Camera not found or cannot be opened for id (id).")
 
