@@ -20,8 +20,6 @@ except ImportError:
 
     using_ntcore = True
 
-FRONT_PORT_ID = "3-2:1.0"
-BACK_PORT_ID = "1-1.2"
 IS_UNDISTORT = False
 
 
@@ -98,14 +96,15 @@ class WebCam:
 
         print(f"Camera {id} requested {w}x{h}, got {actual_w}x{actual_h}")
 
-        # self.new_camera_mtx, roi = cv2.getOptimalNewCameraMatrix(
-        #     self.camera_matrix, self.dist_coeffs, (w, h), 1, (w, h)
-        # )
-        # self.mapx, self.mapy = cv2.initUndistortRectifyMap(
-        #     self.camera_matrix, self.dist_coeffs, None, self.new_camera_mtx, (w, h), 5
-        # )
-
-        self.new_camera_mtx = self.camera_matrix
+        if IS_UNDISTORT:
+            self.new_camera_mtx, roi = cv2.getOptimalNewCameraMatrix(
+                self.camera_matrix, self.dist_coeffs, (w, h), 1, (w, h)
+            )
+            self.mapx, self.mapy = cv2.initUndistortRectifyMap(
+                self.camera_matrix, self.dist_coeffs, None, self.new_camera_mtx, (w, h), 5
+            )
+        else:
+            self.new_camera_mtx = self.camera_matrix
 
         # configures the estimator with the new values from undistortion
         self.pose_est = apriltag.AprilTagPoseEstimator(
@@ -166,8 +165,9 @@ class WebCam:
             print("Failed to grab frame")
             return np.nan
 
-        # We remap the frame here to remove distortion, this ensures moer accurate detections and pos est.
-        # frame = cv2.remap(frame, self.mapx, self.mapy, cv2.INTER_LINEAR)
+        # We remap the frame here to remove distortion, this ensures more accurate detections and pos est.
+        if IS_UNDISTORT:
+            frame = cv2.remap(frame, self.mapx, self.mapy, cv2.INTER_LINEAR)
 
         # Needs gray for detections
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -230,11 +230,10 @@ class WebCam:
 
 cam = WebCam("fl")
 cam2 = WebCam("fr")
+cam3 = WebCam("br")
 
 while True:
-    cam.detect()
     cam.push_network_table(cam.detect())
-    cam2.detect()
     cam2.push_network_table(cam2.detect())
-    # cam.detect()
-    # cam.push_network_table(cam.detect())
+    cam3.push_network_table(cam3.detect())
+    
