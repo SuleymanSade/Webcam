@@ -32,22 +32,33 @@ def get_camera_index(port_id):
         if "video4linux" in real_path:
             # We do divisible by 2, because generally video with odd numbers represent
             # meta data and the even numbers are actually the stream itself
-            if port_id in real_path: # and int(dev_node.replace("video", "")) % 2==0:
-                return int(dev_node.replace("video", ""))-1
+            if port_id in real_path:  # and int(dev_node.replace("video", "")) % 2==0:
+                return int(dev_node.replace("video", "")) - 1
 
-    raise KeyError(f"cannot find the port_id {port_id}, this might mean your stream values in webcam.json is wrong.")
+    raise KeyError(
+        f"cannot find the port_id {port_id}, this might mean your stream values in webcam.json is wrong."
+    )
 
 
 class WebCam:
     def __init__(self, id: str):
-        with open("webcam.json", "r", encoding="utf-8") as file:
+        with open(
+            # The position of the settings file (webcam.json)
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "webcam.json"),
+            "r",
+            encoding="utf-8",
+        ) as file:
             settings = json.load(file)
 
-        self.cam = cv2.VideoCapture(
-            "/dev/video" + str(get_camera_index(settings[id]["stream"])),
-            cv2.CAP_V4L2
+        if settings["dev"]["is_device_pi"]:
+            # Use this on pi
+            self.cam = cv2.VideoCapture(
+                "/dev/video" + str(get_camera_index(settings[id]["stream"])),
+                cv2.CAP_V4L2,
             )
-        # self.cam = cv2.VideoCapture(1)
+        else:
+            # When using with computer
+            self.cam = cv2.VideoCapture(0)
 
         if not self.cam.isOpened():
             print(f"Camera not found or cannot be opened for id (id).")
@@ -61,8 +72,6 @@ class WebCam:
         # look into cv2's camera calibration for better parameters
         # This changes from camera to camera
         # Camera parameters (fx, fy, cx, cy)
-        with open("webcam.json", "r", encoding="utf-8") as file:
-            settings = json.load(file)
 
         self.dist_coeffs = np.array(settings[id]["dist"], dtype=np.float64).reshape(
             (5, 1)
@@ -89,6 +98,20 @@ class WebCam:
                 f"[{id}] Warning: Resolution mismatch. Scaling calibration by x:{scale_x:.2f}, y:{scale_y:.2f}"
             )
 
+        self.STORE_DATA = settings["storage"]["store_data"]
+        if self.STORE_DATA:
+            # Write individual JPEG frames instead of a video container.
+            # Video containers (.avi/.mp4) require a finalization step that never
+            # happens on a hard power cut — individual JPEGs are complete the moment
+            # they land on disk, so no frames are lost.
+            self.frame_dir = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "rec",
+                f"cam_{id}_{int(time.time())}"
+            )
+            os.makedirs(self.frame_dir, exist_ok=True)
+            print(f"[{id}] Recording frames to: {self.frame_dir}")
+
         self.camera_matrix[0, 0] *= scale_x  # fx
         self.camera_matrix[1, 1] *= scale_y  # fy
         self.camera_matrix[0, 2] *= scale_x  # cx
@@ -101,7 +124,12 @@ class WebCam:
                 self.camera_matrix, self.dist_coeffs, (w, h), 1, (w, h)
             )
             self.mapx, self.mapy = cv2.initUndistortRectifyMap(
-                self.camera_matrix, self.dist_coeffs, None, self.new_camera_mtx, (w, h), 5
+                self.camera_matrix,
+                self.dist_coeffs,
+                None,
+                self.new_camera_mtx,
+                (w, h),
+                5,
             )
         else:
             self.new_camera_mtx = self.camera_matrix
@@ -156,6 +184,9 @@ class WebCam:
         self.table.putNumberArray("y", y_list)
         self.table.putNumberArray("z", z_list)
 
+    def release(self):
+        self.cam.release()
+
     def detect(self) -> np.ndarray:
         if not self.start_time:
             self.start_time = time.time()
@@ -169,23 +200,27 @@ class WebCam:
         if IS_UNDISTORT:
             frame = cv2.remap(frame, self.mapx, self.mapy, cv2.INTER_LINEAR)
 
+
         # Needs gray for detections
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
+        if self.STORE_DATA:
+            frame_path = os.path.join(self.frame_dir, f"{self.frame_count:06d}.jpg")
+            cv2.imwrite(frame_path, gray, [cv2.IMWRITE_JPEG_QUALITY, 80])
+
         # Detect AprilTags
         detections = self.detector.detect(gray)
-        
         poses = []
 
         for det in detections:
-            
+
             pose = self.pose_est.estimate(det)
-            
+
             poses.append((det.getId(), pose))
 
             t = pose.translation()
             x, y, z = t.x, t.y, t.z
-            
+
             # TODO: gives error in pi, don't know why
             # R = pose.rotation().toMatrix()
 
@@ -212,7 +247,6 @@ class WebCam:
 
         return poses
 
-
         # axis:
         # z, positive z is away from camera
         # x, positive x is to the right
@@ -230,10 +264,17 @@ class WebCam:
 
 cam = WebCam("fl")
 cam2 = WebCam("fr")
-cam3 = WebCam("br")
+# cam3 = WebCam("br")
+# cam =WebCam("computer")
 
-while True:
-    cam.push_network_table(cam.detect())
-    cam2.push_network_table(cam2.detect())
-    cam3.push_network_table(cam3.detect())
-    
+try:
+    while True:
+        cam.push_network_table(cam.detect())
+        cam2.push_network_table(cam2.detect())
+        # cam3.push_network_table(cam3.detect())
+except KeyboardInterrupt:
+    pass
+finally:
+    cam.release()
+    cam2.release()
+    # cam3.release()
