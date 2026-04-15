@@ -6,6 +6,7 @@ import os
 import time
 import robotpy_apriltag as apriltag
 import math
+import subprocess
 
 try:
     # works on the computer
@@ -58,7 +59,7 @@ class WebCam:
             )
         else:
             # When using with computer
-            self.cam = cv2.VideoCapture(0)
+            self.cam = cv2.VideoCapture(1)
 
         if not self.cam.isOpened():
             print(f"Camera not found or cannot be opened for id (id).")
@@ -100,17 +101,30 @@ class WebCam:
 
         self.STORE_DATA = settings["storage"]["store_data"]
         if self.STORE_DATA:
-            # Write individual JPEG frames instead of a video container.
-            # Video containers (.avi/.mp4) require a finalization step that never
-            # happens on a hard power cut — individual JPEGs are complete the moment
-            # they land on disk, so no frames are lost.
-            self.frame_dir = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                "rec",
-                f"cam_{id}_{int(time.time())}"
-            )
-            os.makedirs(self.frame_dir, exist_ok=True)
-            print(f"[{id}] Recording frames to: {self.frame_dir}")
+            rec_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rec")
+            os.makedirs(rec_dir, exist_ok=True)
+            video_path = os.path.join(rec_dir, f"cam_{id}_{int(time.time())}.mp4")
+
+            # Pipe raw grayscale frames into ffmpeg for H.264 encoding.
+            # H.264 inter-frame compression is 10-20x smaller than JPEGs for a
+            # mostly-static camera scene. ultrafast preset keeps CPU usage low on the Pi.
+            # crf controls quality: 18=high, 28=medium, 35=low -- raise to shrink files further.
+            # ffmpeg flushes each frame to disk as it arrives, so a hard power cut
+            # only loses the last few buffered frames.
+            self.ffmpeg_proc = subprocess.Popen([
+                "ffmpeg",
+                "-f", "rawvideo",
+                "-pix_fmt", "gray",
+                "-s", f"{int(actual_w)}x{int(actual_h)}",
+                "-r", "3",
+                "-i", "pipe:0",
+                "-vcodec", "libx264",
+                "-crf", "28",
+                "-preset", "ultrafast",
+                "-pix_fmt", "yuv420p",
+                video_path
+            ], stdin=subprocess.PIPE)
+            print(f"[{id}] Recording to: {video_path}")
 
         self.camera_matrix[0, 0] *= scale_x  # fx
         self.camera_matrix[1, 1] *= scale_y  # fy
@@ -186,6 +200,9 @@ class WebCam:
 
     def release(self):
         self.cam.release()
+        if self.STORE_DATA:
+            self.ffmpeg_proc.stdin.close()
+            self.ffmpeg_proc.wait()
 
     def detect(self) -> np.ndarray:
         if not self.start_time:
@@ -200,16 +217,15 @@ class WebCam:
         if IS_UNDISTORT:
             frame = cv2.remap(frame, self.mapx, self.mapy, cv2.INTER_LINEAR)
 
-
         # Needs gray for detections
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        if self.STORE_DATA:
-            frame_path = os.path.join(self.frame_dir, f"{self.frame_count:06d}.jpg")
-            cv2.imwrite(frame_path, gray, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        if self.STORE_DATA and self.frame_count % 3 == 0:
+            self.ffmpeg_proc.stdin.write(gray.tobytes())
 
         # Detect AprilTags
         detections = self.detector.detect(gray)
+
         poses = []
 
         for det in detections:
@@ -265,7 +281,6 @@ class WebCam:
 cam = WebCam("fl")
 cam2 = WebCam("fr")
 # cam3 = WebCam("br")
-# cam =WebCam("computer")
 
 try:
     while True:
