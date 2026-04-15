@@ -105,8 +105,7 @@ class WebCam:
             # happens on a hard power cut — individual JPEGs are complete the moment
             # they land on disk, so no frames are lost.
             self.frame_dir = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                "rec",
+                settings["storage"]["location"],
                 f"cam_{id}_{int(time.time())}"
             )
             os.makedirs(self.frame_dir, exist_ok=True)
