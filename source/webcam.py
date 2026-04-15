@@ -204,7 +204,7 @@ class WebCam:
         # Needs gray for detections
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        if self.STORE_DATA:
+        if self.STORE_DATA and self.frame_count %3==0:
             frame_path = os.path.join(self.frame_dir, f"{self.frame_count:06d}.jpg")
             cv2.imwrite(frame_path, gray, [cv2.IMWRITE_JPEG_QUALITY, 80])
 
@@ -224,7 +224,7 @@ class WebCam:
             # TODO: gives error in pi, don't know why
             # R = pose.rotation().toMatrix()
 
-            print("x: ", x, "y:", y, "z:", z)
+            # print("x: ", x, "y:", y, "z:", z)
 
             # for i in range(4):
             #     p1_raw = det.getCorner(i)
@@ -243,7 +243,7 @@ class WebCam:
             # This allows you to press 'q' to stop the loop if needed
             return np.nan
 
-        print(f"FPS: {self.frame_count / (time.time() - self.start_time):.2f}")
+        # print(f"FPS: {self.frame_count / (time.time() - self.start_time):.2f}")
 
         return poses
 
